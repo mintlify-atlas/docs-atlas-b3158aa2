@@ -1,0 +1,75 @@
+---
+title: "Considerations"
+description: "Build-time dependencies and environment considerations when you adopt BuildCharts."
+---
+
+## Container registry runtime dependency
+
+BuildCharts pulls charts from an OCI-compliant container registry during `buildcharts update` and `buildcharts generate`.
+
+That makes the registry a runtime dependency for generation:
+- Your builds depend on registry uptime and authentication.
+- Registry outages or auth misconfiguration can block generation.
+
+BuildCharts partially mitigates this with a local blob cache. Charts are cached by digest under your temp directory (`<temp>/buildcharts/oci/blobs`). If the digest already exists in that cache, BuildCharts reuses the chart blob instead of downloading it again.
+
+Caching improves performance and reduces registry traffic, but you should still treat the registry as a dependency. You still need registry access to resolve digests and validate lock files.
+
+<Note>
+  If you use ephemeral CI runners, consider persisting the blob cache between runs.
+</Note>
+
+This is the same kind of dependency you already have when building Docker images that reference base images from a registry. If your container registry (for example Azure Container Registry) is unavailable, builds and generation that depend on it will be affected.
+
+## Docker toolchain dependency
+
+BuildCharts generates a plan that you execute with Docker Buildx/BuildKit. Changes in Docker tooling, builder configuration, or security posture can affect all builds that rely on it.
+
+If you operate BuildCharts at scale, standardize the Docker/Buildx/BuildKit versions you use in CI and on remote builders.
+
+You can also pin the Dockerfile frontend syntax version in chart Dockerfiles to reduce surprises from Dockerfile parsing changes. Add a `# syntax=docker/dockerfile:1.1` directive as the first line. See [Dockerfile syntax directive](https://docs.docker.com/reference/dockerfile/#syntax). This pins the Dockerfile syntax frontend, not the Docker Engine version.
+
+## Generator dependency and fallbacks
+
+BuildCharts is a generator. If generation is blocked, your builds are blocked.
+
+As a fallback, you can check in the generated Bake plan (and optionally inline Dockerfiles) to remove the runtime generator dependency. You trade off chart update flow and can drift from upstream fixes and improvements.
+
+## Parallelism and caching trade-offs
+
+Bake can execute many targets in parallel. On large repositories and shared runners, this can saturate CPU, I/O, and cache storage.
+
+<Warning>
+  Treat cache strategy as part of your build design. Misconfigured cache exports/imports can make builds slower and harder to troubleshoot than a simpler pipeline.
+</Warning>
+
+## Template indirection and troubleshooting
+
+Chart indirection helps you reuse stages, but it can also obscure root causes when builds fail.
+
+Plan for troubleshooting workflows that inspect generated artifacts and execution output. See [Docker Bake](/core-features/docker-bake) and [Troubleshooting](/troubleshooting/buildx-history).
+
+## Secrets and credentials
+
+BuildCharts does not manage secrets. You still need to provision credentials and decide how they flow into builds.
+
+Plugins can help write local config files and environment variables for common ecosystems, but ownership of secret lifecycle, auditability, and access control stays with your CI/platform setup. See [Plugins](/core-features/plugins).
+
+## Run BuildCharts from your own ecosystem (optional)
+
+If you want to reduce supply-chain risk (for example vendor compromise or mutable upstream artifacts), you can fork and operate BuildCharts within your own ecosystem:
+
+- Build and publish the `dotnet-buildcharts` tool package to your own NuGet feed, and restore it from there in CI.
+- Publish charts to your own OCI registry or organization, and point `charts/buildcharts/Chart.yaml` to your internal `repository: oci://...`.
+- Use [Chart lock files](/core-features/lock-files) to pin chart digests and make builds deterministic even if tags move.
+- Apply chart governance and validation in CI (review policies, signing, scanning). See [Trust and integrity](/charts#trust-and-integrity).
+
+## Avoid external tool restore dependencies (optional)
+
+When you run `dotnet tool install` or `dotnet tool restore`, the .NET SDK resolves the tool package from a NuGet feed (by default `nuget.org`) and downloads it if needed.
+
+If you want to avoid relying on external package feeds at build time, mirror or publish the tool package to your own NuGet feed (for example Azure Artifacts) and configure your `NuGet.config` (or `--add-source`) to use it. Another option is to install the tool once in your build image so CI does not need to download it on every run.
+
+<Note>
+  This only affects how you acquire the BuildCharts CLI. Chart dependencies are resolved separately from an OCI container registry. See [Charts](/charts).
+</Note>

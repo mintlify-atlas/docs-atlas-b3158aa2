@@ -1,97 +1,105 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Define and generate pipelines"
+description: "Generate Docker Buildx Bake plans from declarative build metadata and OCI-hosted charts."
 ---
 
-## Setting up
+`buildcharts` is a CLI tool for defining build intent in `build.yml` and turning that metadata into a Docker Buildx Bake plan. You keep build definitions in your repo, pull reusable chart templates from an OCI registry, and run the same generated plan locally or in CI.
 
-Get your documentation site up and running in minutes.
+It sits between handwritten pipeline YAML and raw Dockerfiles. You declare what should happen, BuildCharts resolves the chart-backed implementation, and Docker Buildx Bake executes the generated plan.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Install" icon="download" href="/install">
+    Install the BuildCharts CLI globally or in a local tool manifest.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title=".NET quickstart" icon="rocket" href="/quickstart">
+    Scaffold a .NET repository and generate your first Bake plan.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    Every command, option, and flag documented.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="How it works" icon="gears" href="/guides/how-it-works">
+    Understand the generation flow from metadata to Docker Bake.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## The model
 
-Everything you need to create world-class documentation.
+BuildCharts is designed for teams that want to standardize builds across many repositories without locking themselves into one CI provider:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+- **Intent** stays in repository metadata (`build.yml`)
+- **Implementation** lives in versioned OCI charts (`Chart.yaml`)
+- **Execution** runs through Docker Buildx Bake
 
-## Need inspiration?
+That gives you a portable build layer that can be debugged locally and reused across repositories.
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## What problem it solves
+
+BuildCharts reduces common CI/CD problems:
+
+- Duplicated or nested pipeline YAML across many repositories
+- Platform-specific pipeline logic that is hard to move between providers
+- Fragile template rollouts where repositories drift onto different versions
+- Poor local debuggability where troubleshooting requires repeated CI runs
+
+Instead of copying CI steps repo by repo, teams centralize the build implementation in charts and let repositories consume versioned updates through normal dependency changes.
+
+## What you define
+
+```text
+src/
+├── build.yml            # Build metadata
+├── charts/
+│   └── buildcharts/
+│       └── Chart.yaml   # Chart dependency data
+```
+
+## What BuildCharts generates
+
+```text
+.buildcharts/
+└── docker-bake.hcl      # Generated Docker Buildx Bake plan
+```
+
+## Workflow
+
+<Steps>
+  <Step title="Create or scaffold build.yml and Chart.yaml">
+    Run `buildcharts init` in a .NET repository to scaffold both files automatically, or write them manually.
+  </Step>
+  <Step title="Pin chart versions (optional)">
+    Run `buildcharts update` to resolve chart digests and write `Chart.lock` for reproducible builds.
+  </Step>
+  <Step title="Generate the Bake plan">
+    Run `buildcharts generate` to validate metadata, pull charts, run plugins, and write `.buildcharts/docker-bake.hcl`.
+  </Step>
+  <Step title="Execute the plan">
+    Run `docker buildx bake --file .buildcharts/docker-bake.hcl` to build with the generated plan.
+  </Step>
+</Steps>
+
+## Why use it
+
+- Keep CI logic in versioned OCI charts instead of copying pipeline YAML across repos
+- Run the same generated build plan locally and in CI
+- Keep repository config lightweight by separating intent in `build.yml` from implementation in charts
+- Stay provider-agnostic by generating Docker-native build plans instead of provider-specific steps
+- Adopt chart updates gradually with versioned dependencies and optional lock files
+- Describe intent with aliases such as `build`, `test`, `nuget`, and `docker`
+- Extend generation with built-in plugins
+
+## Explore the docs
+
+<CardGroup cols={2}>
+  <Card title="Core features" icon="star" href="/core-features/scaffolding">
+    Scaffolding, metadata, generation, lock files, plugins, and charts.
+  </Card>
+  <Card title="How-to guides" icon="book" href="/how-to/define-build-stages">
+    Define build stages, use outputs, and handle dependencies.
+  </Card>
+  <Card title="Plugins" icon="puzzle-piece" href="/core-features/plugins">
+    NuGetAuthenticate and TestcontainersDinD built-in plugins.
+  </Card>
+  <Card title="GitHub Actions" icon="github" href="/guides/github-actions">
+    Run BuildCharts in your GitHub Actions workflows.
+  </Card>
+</CardGroup>

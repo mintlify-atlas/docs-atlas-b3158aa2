@@ -1,0 +1,106 @@
+---
+title: "Generate"
+description: "What buildcharts generate does and the files it produces."
+---
+
+`buildcharts generate` is the core step that turns repository metadata into an executable Docker Buildx Bake plan.
+
+```bash
+buildcharts generate [--use-inline-dockerfiles] [--ignore-lock] [--verbose]
+```
+
+## Generation pipeline
+
+<Steps>
+  <Step title="Read inputs">
+    BuildCharts reads:
+    - `build.yml`
+    - `charts/buildcharts/Chart.yaml`
+    - `charts/buildcharts/Chart.lock` (if it exists)
+  </Step>
+  <Step title="Validate configuration">
+    Before writing output, BuildCharts validates:
+    - There is exactly one `build` target
+    - Every target `type` matches a chart alias from `Chart.yaml`
+
+    When `Chart.lock` exists and `--ignore-lock` is not set, BuildCharts also checks:
+    - Missing lock entries
+    - Version mismatches between `Chart.yaml` and `Chart.lock`
+    - Orphaned lock entries
+    - Registry digest mismatches during pull
+
+    If the lock file is out of sync, BuildCharts stops and tells you to refresh it.
+  </Step>
+  <Step title="Remove previous output">
+    Removes the previous `.buildcharts` folder so the generated plan always reflects the current state of `build.yml` and the pulled charts.
+  </Step>
+  <Step title="Pull chart artifacts">
+    Pulls chart artifacts from the OCI registries declared in `Chart.yaml` into `.buildcharts`.
+  </Step>
+  <Step title="Run plugins">
+    Executes any configured plugins in the order listed in `build.yml`. Plugins can patch the generated HCL, write secret files, or perform environment setup.
+  </Step>
+  <Step title="Write the Bake plan">
+    Writes `.buildcharts/docker-bake.hcl` — the executable Docker Buildx Bake plan.
+
+    ```bash
+    docker buildx bake --file .buildcharts/docker-bake.hcl
+    ```
+  </Step>
+</Steps>
+
+## Flags
+
+| Flag | Description |
+| --- | --- |
+| `--use-inline-dockerfiles` | Embed pulled Dockerfiles directly in `.buildcharts/docker-bake.hcl` instead of referencing them as paths |
+| `--ignore-lock` | Skip `Chart.lock` validation even if the file exists |
+| `--verbose` | Enable extra plugin and generator logging by setting `BUILDSCHARTS_VERBOSE=1` |
+
+## Environment variables
+
+| Variable | Description |
+| --- | --- |
+| `DOCKER_CONFIG` | Override the Docker config directory used for registry authentication |
+
+## Main output
+
+The generated Bake plan lives here:
+
+```text
+.buildcharts/docker-bake.hcl
+```
+
+Run it with:
+
+```bash
+buildcharts generate
+docker buildx bake --file .buildcharts/docker-bake.hcl
+```
+
+You can also target a specific generated stage:
+
+```bash
+docker buildx bake --file .buildcharts/docker-bake.hcl test
+```
+
+<Note>
+If `Chart.lock` does not exist, `generate` still works. It pulls the current tags from the registry and skips lock validation. See [Lock files](/core-features/lock-files) for details on when to create a lock file.
+</Note>
+
+## Related pages
+
+<Columns cols={2}>
+  <Card title="Metadata" icon="file-text" href="/core-features/metadata">
+    Learn the full `build.yml` schema that `generate` reads.
+  </Card>
+  <Card title="Lock files" icon="lock" href="/core-features/lock-files">
+    Pin chart digests and control dependency drift.
+  </Card>
+  <Card title="Docker Bake" icon="layers" href="/core-features/docker-bake">
+    Understand the generated HCL and how Bake executes it.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    Full reference for all `buildcharts generate` options.
+  </Card>
+</Columns>

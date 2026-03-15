@@ -1,0 +1,86 @@
+---
+title: "Using outputs"
+description: "Export artifacts with Bake and consume them from .buildcharts/output."
+---
+
+Charts can export artifacts by writing files into `/output` inside the Dockerfile. The generated Bake plan then uses a local output to copy that content to `.buildcharts/output/<type>` on the host during `docker buildx bake`.
+
+## Output behavior by stage type
+
+| Stage type | Output behavior |
+| --- | --- |
+| `build` | `type=cacheonly` |
+| `docker` | `type=docker` |
+| Any other type | Export to `.buildcharts/output/<type>` |
+
+`test`, `nuget`, and any custom non-docker type export local files under `.buildcharts/output`.
+
+## How local exports work
+
+BuildCharts implements local outputs using Docker Buildx Bake build artifact exports.
+
+For any non-`build` and non-`docker` stage type, the generated `docker-bake.hcl` includes a local output like:
+
+```hcl
+output = [
+  "type=cacheonly,mode=max",
+  "type=local,dest=.buildcharts/output/nuget"
+]
+```
+
+`type=local` exports the filesystem contents of the target stage to a local directory. Everything that exists in the final stage is copied to `.buildcharts/output/<type>`.
+
+This is why charts that export artifacts typically use a final `FROM scratch` stage and copy only the artifacts into it:
+
+```dockerfile
+FROM scratch AS nuget
+COPY --from=pre-nuget /output /
+```
+
+<Note>
+For the underlying Docker pattern, see [Exporting build artifacts](https://docs.docker.com/guides/bake/#exporting-build-artifacts).
+</Note>
+
+## Work with Docker outputs
+
+`docker` stages use `type=docker`, so the image is loaded into your Docker environment instead of being exported to `.buildcharts/output/docker`.
+
+Use `tags` in `build.yml` so the result is easy to reference:
+
+```yaml
+targets:
+  src/App/App.csproj:
+    - type: docker
+      with:
+        base: mcr.microsoft.com/dotnet/runtime:10.0
+        tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+```
+
+### Variable interpolation in tags
+
+Tag strings support `${VARIABLE}` interpolation. `VERSION` and `COMMIT` are common variables declared at the top of `build.yml`:
+
+```yaml
+variables:
+  - VERSION: "1.0.0-local"
+  - COMMIT: ""
+
+targets:
+  src/App/App.csproj:
+    - type: docker
+      with:
+        base: mcr.microsoft.com/dotnet/runtime:10.0
+        tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+```
+
+These variables become Bake variables and are also exposed through the generated `_common` target args. You can override them at execution time:
+
+```bash
+docker buildx bake --file .buildcharts/docker-bake.hcl docker \
+  --set "*.args.VERSION=2.1.0" \
+  --set "*.args.COMMIT=abc1234"
+```
+
+<Tip>
+Use `${VERSION}-${COMMIT}` in your tags to produce unique, traceable image references for every CI run.
+</Tip>

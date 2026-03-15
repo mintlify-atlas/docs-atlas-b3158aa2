@@ -1,0 +1,98 @@
+---
+title: "Lock files"
+description: "Chart.lock for repeatable chart resolution and controlled updates."
+---
+
+BuildCharts can pin chart dependencies from `charts/buildcharts/Chart.yaml` in `charts/buildcharts/Chart.lock`.
+
+The purpose of the lock file is to make chart resolution more repeatable across local runs and CI. Instead of always following the current state of a chart tag in the registry, BuildCharts pins the exact resolved digest for each dependency. That reduces drift from upstream chart changes and lets teams roll out chart updates intentionally instead of picking them up implicitly.
+
+<Note>
+A tag such as `0.0.1` or `latest` can be moved or republished in the registry, but the digest recorded in `Chart.lock` points to one exact artifact. If the tag later points somewhere else, BuildCharts detects the mismatch instead of silently consuming changed chart content.
+</Note>
+
+## `Chart.lock` format
+
+`buildcharts update` resolves the current digest for each dependency and writes `charts/buildcharts/Chart.lock`:
+
+```yaml
+dependencies:
+  - name: dotnet-build
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts/dotnet-build
+    digest: sha256:...
+lockVersion: 1
+```
+
+`Chart.yaml` says which chart version you want. `Chart.lock` records the exact OCI digest that was resolved at that point in time. That gives you more reproducible builds, clearer dependency state across repositories, and safer upgrades when platform teams publish new chart versions.
+
+## Update workflow
+
+<Steps>
+  <Step title="Change chart versions in Chart.yaml">
+    Update the `version` field for any dependency you want to upgrade in `charts/buildcharts/Chart.yaml`.
+
+    ```yaml
+    dependencies:
+      - name: dotnet-build
+        alias: build
+        version: 0.0.2          # bumped from 0.0.1
+        repository: oci://registry-1.docker.io/buildcharts
+    ```
+  </Step>
+  <Step title="Refresh the lock file">
+    Run `buildcharts update` to resolve the new digest for each dependency and write a fresh `Chart.lock`.
+
+    ```bash
+    buildcharts update
+    ```
+
+    This resolves each `repository/name:version` reference against the registry and records the digest.
+  </Step>
+  <Step title="Commit the updated lock file">
+    Commit both `Chart.yaml` and `Chart.lock` together so the pinned digest is consistent across all environments.
+  </Step>
+  <Step title="Generate with the updated lock">
+    Run `buildcharts generate`. It validates the lock file before pulling charts and writing the Bake plan.
+
+    ```bash
+    buildcharts generate
+    ```
+  </Step>
+</Steps>
+
+## Validation rules
+
+When `charts/buildcharts/Chart.lock` exists and you do not pass `--ignore-lock`, `buildcharts generate` checks:
+
+- Every dependency in `Chart.yaml` has a matching lock entry
+- The locked version still matches `Chart.yaml`
+- The lock file does not contain orphaned dependencies
+- The registry digest still matches the locked digest during chart pull
+
+If any of those checks fail, generation stops and tells you to run `buildcharts update`.
+
+<Note>
+If `Chart.lock` does not exist, `generate` still works. It pulls the current tags from the registry and skips lock validation.
+</Note>
+
+## Skipping lock validation
+
+<Warning>
+Use `--ignore-lock` only when you intentionally want to generate without enforcing the lock file. This bypasses all digest mismatch detection.
+</Warning>
+
+```bash
+buildcharts generate --ignore-lock
+```
+
+## Related pages
+
+<Columns cols={2}>
+  <Card title="Charts" icon="package" href="/charts">
+    How OCI-hosted charts are declared and resolved.
+  </Card>
+  <Card title="Generate" icon="play" href="/core-features/generate">
+    How `buildcharts generate` uses the lock file during validation.
+  </Card>
+</Columns>

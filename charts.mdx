@@ -1,0 +1,269 @@
+---
+title: "Charts"
+description: "Reusable, versioned pipeline templates distributed as OCI artifacts."
+---
+
+BuildCharts resolves stage implementations from OCI-hosted charts declared in `charts/buildcharts/Chart.yaml`.
+
+## Declare stage aliases in `Chart.yaml`
+
+BuildCharts uses a Helm-style chart file with dependency aliases:
+
+```yaml
+apiVersion: v2
+name: buildcharts
+version: 0.0.1
+description: A meta-chart to define build pipeline targets and templates
+type: application
+
+dependencies:
+  - name: dotnet-build
+    alias: build
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-test
+    alias: test
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-nuget
+    alias: nuget
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-docker
+    alias: docker
+    version: 0.0.2
+    repository: oci://registry-1.docker.io/buildcharts
+```
+
+Each dependency needs:
+- `name` — the chart name in the registry
+- `alias` — the name you use in `build.yml` under `targets.<path>.type`
+- `version` — the chart version tag to resolve
+- `repository` — the OCI registry URL
+
+BuildCharts turns that into a chart reference in the form `repository/name:version`.
+
+## What charts mean in BuildCharts
+
+Charts are how BuildCharts separates build intent from build implementation:
+
+- `build.yml` says **what** to build
+- Charts say **how** that stage runs
+
+That lets multiple repositories share the same versioned stage implementations without copying pipeline logic into every repository.
+
+You can think of charts as OCI-versioned stages in a centrally managed multi-stage build model. Each chart dependency provides the implementation for a stage type such as `build`, `test`, `nuget`, or `docker`, and repositories opt into those stages by alias instead of embedding the stage logic themselves.
+
+That central model matters when you want to manage pipeline behavior across many repositories. You can update the chart once, publish a new version, and let repositories adopt that version through normal dependency updates instead of editing CI definitions repo by repo.
+
+<Tip>
+This is similar to Helm charts: both use versioned chart metadata and both can be distributed through OCI registries. The difference is what the chart configures. Helm charts describe how an application is deployed to Kubernetes. BuildCharts charts describe how build stages are generated into a Docker Bake plan for CI and local builds.
+</Tip>
+
+## Pull a chart directly
+
+Use `buildcharts pull` when you want to inspect a single chart:
+
+<Tabs>
+  <Tab title="By tag">
+    ```bash
+    buildcharts pull oci://registry-1.docker.io/buildcharts/dotnet-build:0.0.1 --untar
+    ```
+  </Tab>
+  <Tab title="By digest">
+    ```bash
+    buildcharts pull oci://registry-1.docker.io/buildcharts/dotnet-build@sha256:...
+    ```
+  </Tab>
+</Tabs>
+
+## Container registry
+
+Each chart dependency in `charts/buildcharts/Chart.yaml` points to a repository in an OCI-compliant container registry:
+
+```yaml
+repository: oci://registry-1.docker.io/buildcharts
+```
+
+That registry is the dependency source for the chart. BuildCharts does not call a separate BuildCharts backend or package server. When you run `buildcharts update`, `buildcharts pull`, or `buildcharts generate`, BuildCharts resolves the chart reference against that registry and pulls the chart content from there.
+
+Authentication is registry authentication. You authenticate to the container registry that stores the chart, such as Docker Hub, Azure Container Registry, or another OCI-compatible registry.
+
+### Authenticate to private registries
+
+If the registry is public, BuildCharts can pull the chart without credentials. If the registry is private, `buildcharts pull`, `buildcharts update`, and `buildcharts generate` need valid registry credentials.
+
+BuildCharts reuses Docker credentials instead of introducing a separate auth model. It reads Docker config from:
+- `DOCKER_CONFIG/config.json`
+- `~/.docker/config.json`
+
+The current implementation supports `credHelpers`, `auths`, and `credsStore`.
+
+The common path is:
+1. Authenticate to the registry with Docker or the registry's normal Docker-compatible login flow
+2. Let Docker write credentials or helper configuration
+3. Run `buildcharts` and let it reuse those credentials
+
+<Note>
+Azure Container Registry is handled explicitly. BuildCharts supports the Azure-style token shapes that appear in Docker config and helper output for `.azurecr.io`, so Azure-backed Docker auth flows continue to work as long as the credentials end up in Docker's config or helper chain.
+</Note>
+
+## Alias mapping
+
+Each dependency declares an alias that you use in `build.yml`:
+
+```yaml
+# Chart.yaml
+dependencies:
+  - name: dotnet-docker
+    alias: docker
+    version: 0.0.2
+    repository: oci://registry-1.docker.io/buildcharts
+```
+
+```yaml
+# build.yml
+targets:
+  src/App/App.csproj:
+    type: docker
+```
+
+If `docker` is not declared as an alias in `Chart.yaml`, `buildcharts generate` fails.
+
+## Lock files
+
+BuildCharts supports an optional `charts/buildcharts/Chart.lock` file for more repeatable builds.
+
+When you run `buildcharts update`, BuildCharts resolves chart digests and writes that lock file.
+
+If the lock file exists, `buildcharts generate` uses it to detect dependency drift before it renders the Bake plan. If the lock file and the resolved chart state do not match, generation stops with a discrepancy warning and tells you to refresh the lock file. If it does not exist, generation still works, but chart resolution follows the current registry tags instead of pinned digests.
+
+See [Lock files](/core-features/lock-files) for the full workflow.
+
+## What ORAS is doing here
+
+ORAS stands for OCI Registry As Storage.
+
+BuildCharts uses the [ORAS C# client library](https://github.com/oras-project/oras-dotnet) to talk to the registry and pull chart content. In practice, `buildcharts` acts as an embedded ORAS client when it consumes charts:
+
+1. The chart is stored in the registry as an OCI artifact
+2. BuildCharts resolves the manifest and digest
+3. BuildCharts fetches the chart blob
+4. BuildCharts unpacks it into `.buildcharts`
+
+You do not need to install the ORAS CLI yourself to use BuildCharts. Registry access is already built into the `buildcharts` CLI.
+
+BuildCharts is also not tied to ORAS as the publishing tool. It consumes OCI artifacts by registry, repository, tag, and digest, so teams can publish compatible chart artifacts with ORAS, Helm, or another OCI-capable CLI. See [ORAS](https://oras.land/) for the underlying registry client model.
+
+## What OCI means here
+
+OCI is the Open Container Initiative. OCI defines open specifications around container formats and distribution. The parts that matter most here are:
+
+- **OCI Image Specification** — defines how manifests, layers, descriptors, and media types are represented
+- **OCI Distribution Specification** — defines how clients push and pull content from registries
+
+In practice, this is why BuildCharts can treat a chart as content stored in the same kind of registry infrastructure that teams already use for container images.
+
+### Why this model is useful
+
+Using OCI-hosted charts gives BuildCharts several practical benefits:
+
+- Versioned stage implementations that can be shared across many repositories
+- Digest pinning through `Chart.lock`
+- Reuse of existing registry infrastructure, permissions, and auth flows
+- A portable distribution format instead of a custom package server
+- Compatibility with general OCI tooling and OCI-native workflows
+
+## Trust and integrity
+
+If you want to secure your chart supply chain, treat charts like other OCI artifacts. This is about securing the published BuildCharts OCI templates themselves — not primarily a `Chart.lock` concern. `Chart.lock` helps with repeatability, but trust and integrity are about who published the chart artifact, what exactly was published, and whether you trust that artifact at consumption time.
+
+### Digest pinning
+
+`Chart.lock` is the first line of defense. It pins the resolved digest for each chart dependency so `buildcharts generate` can detect drift between `Chart.yaml`, `Chart.lock`, and the current registry manifest digest.
+
+That improves reproducibility, but digest pinning alone does not prove who published the artifact.
+
+### Signing
+
+BuildCharts does not implement its own signing or trust system. If you want signed charts, use OCI-native signing tools outside of BuildCharts:
+
+- [Notation](https://notaryproject.dev/)
+- [Cosign](https://docs.sigstore.dev/cosign/overview/)
+
+These tools let you sign OCI artifacts in the registry and verify them later as part of your supply-chain policy.
+
+### Repository governance
+
+Trust and integrity also depend on how your chart source is managed before publication. A strong model is to keep BuildCharts OCI templates in a dedicated repository and protect it with:
+
+- Branch protection
+- Required pull requests
+- Mandatory reviews
+- Controlled publishing to the target registry
+
+That gives teams one central place to review and approve changes to shared build logic before those changes are published and consumed by many repositories.
+
+### Validation and scanning
+
+Enforce automated quality gates before publishing chart artifacts. Typical checks include:
+
+- CI validation for chart packaging and publishing rules
+- Dockerfile linting
+- Static analysis
+- Policy checks
+- Central Dockerfile and image scanning
+
+This is one of the main benefits of centralized charts. Instead of relying on every application repository to enforce the same checks, platform teams can validate and scan shared OCI templates once in the chart pipeline and publish only approved versions.
+
+### Recommended trust model
+
+<Steps>
+  <Step title="Publish to a controlled registry">
+    Publish charts to a private or controlled OCI registry where you manage access.
+  </Step>
+  <Step title="Sign published chart artifacts">
+    Sign the published chart artifacts with Notation or Cosign.
+  </Step>
+  <Step title="Pin digests">
+    Run `buildcharts update` to pin digests in `Chart.lock`. Commit both `Chart.yaml` and `Chart.lock`.
+
+    ```bash
+    buildcharts update
+    ```
+  </Step>
+  <Step title="Verify signatures before promotion">
+    Verify signatures and trust policy before promoting chart versions or allowing consumption in production pipelines.
+  </Step>
+  <Step title="Attach provenance and SBOM to built images">
+    Generate provenance and SBOM attestations for produced images in the Buildx layer. See [Docker Bake](/core-features/docker-bake).
+  </Step>
+</Steps>
+
+<Note>
+For produced images and build outputs, provenance and SBOM belong in the Docker Buildx execution layer rather than the chart distribution layer.
+</Note>
+
+## What BuildCharts does not do
+
+BuildCharts currently does not:
+- Sign charts
+- Verify signatures
+- Manage trust stores or policy
+- Generate SBOMs for pulled chart artifacts
+
+Those controls belong in your chart publishing pipeline, registry policy, and image build policy.
+
+## Related pages
+
+<Columns cols={2}>
+  <Card title="Lock files" icon="lock" href="/core-features/lock-files">
+    Pin chart digests and control dependency drift with `Chart.lock`.
+  </Card>
+  <Card title="Docker Bake" icon="layers" href="/core-features/docker-bake">
+    Provenance and SBOM for produced images in the Buildx execution layer.
+  </Card>
+</Columns>

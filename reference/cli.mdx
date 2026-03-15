@@ -1,0 +1,148 @@
+---
+title: "CLI reference"
+description: "Shipped BuildCharts commands, options, and outputs."
+---
+
+Running `buildcharts` with no subcommand shows help.
+
+## Command summary
+
+| Command | What it does |
+| --- | --- |
+| `buildcharts init` | Scaffold `build.yml` and `charts/buildcharts/Chart.yaml` for a .NET repo |
+| `buildcharts update` | Resolve OCI chart dependencies and refresh `charts/buildcharts/Chart.lock` |
+| `buildcharts generate` | Validate metadata, pull charts, run plugins, and write `.buildcharts/docker-bake.hcl` |
+| `buildcharts pull` | Download a single chart by tag or digest |
+| `buildcharts summary` | Export a summary from the latest Docker Buildx history |
+| `buildcharts version` | Print tool and runtime details |
+
+---
+
+## `buildcharts init`
+
+```bash
+buildcharts init
+```
+
+`init` scans the current repository for a `.sln` or `.slnx` file and detects .NET project types from `.csproj` files.
+
+**Writes:**
+- `build.yml`
+- `charts/buildcharts/Chart.yaml`
+- `.github/workflows/buildcharts.yml` when the Git remote host is GitHub
+
+<Note>
+  `init` currently supports .NET repositories only.
+</Note>
+
+---
+
+## `buildcharts update`
+
+```bash
+buildcharts update
+```
+
+`update` reads `charts/buildcharts/Chart.yaml`, resolves each dependency to a digest, and writes a fresh `charts/buildcharts/Chart.lock`.
+
+### Environment variables
+
+<ParamField query="DOCKER_CONFIG" type="string">
+  Override the Docker config directory used for registry auth.
+</ParamField>
+
+---
+
+## `buildcharts generate`
+
+```bash
+buildcharts generate [--use-inline-dockerfiles] [--ignore-lock] [--verbose]
+```
+
+`generate` deletes `.buildcharts`, validates your config, pulls charts, runs plugins, and writes `.buildcharts/docker-bake.hcl`.
+
+### Options
+
+<ParamField query="--use-inline-dockerfiles" type="flag">
+  Embed pulled Dockerfiles directly in `.buildcharts/docker-bake.hcl`.
+</ParamField>
+
+<ParamField query="--ignore-lock" type="flag">
+  Skip `Chart.lock` validation even if the file exists.
+</ParamField>
+
+<ParamField query="--verbose" type="flag">
+  Enable extra plugin and generator logging by setting `BUILDSCHARTS_VERBOSE=1`.
+</ParamField>
+
+### Environment variables
+
+<ParamField query="DOCKER_CONFIG" type="string">
+  Override the Docker config directory used for registry auth.
+</ParamField>
+
+---
+
+## `buildcharts pull`
+
+```bash
+buildcharts pull <reference> [--untar] [--untardir <DIR>] [--output <OUTPUT>]
+```
+
+### Arguments and options
+
+<ParamField query="reference" type="string" required>
+  OCI reference in the form `registry/repo:tag` or `registry/repo@sha256:...`
+</ParamField>
+
+<ParamField query="--untar" type="flag">
+  Extract the downloaded chart into the current directory.
+</ParamField>
+
+<ParamField query="--untardir" type="string">
+  Extraction directory when `--untar` is set.
+</ParamField>
+
+<ParamField query="--output" type="string">
+  Directory where the downloaded chart blob is stored.
+</ParamField>
+
+### Environment variables
+
+<ParamField query="DOCKER_CONFIG" type="string">
+  Override the Docker config directory used for registry auth.
+</ParamField>
+
+---
+
+## `buildcharts summary`
+
+```bash
+buildcharts summary
+```
+
+`summary` reads the latest Docker Buildx history and exports:
+
+<CardGroup cols={2}>
+  <Card title="SUMMARY.md" icon="file-lines">
+    Markdown summary written to `.buildcharts/output/SUMMARY.md`
+  </Card>
+  <Card title="buildcharts.dockerbuild" icon="box">
+    Build artifact written to `.buildcharts/output/buildcharts.dockerbuild`
+  </Card>
+</CardGroup>
+
+### CI integration
+
+- Appends to `GITHUB_STEP_SUMMARY` on GitHub Actions
+- Uploads artifacts and a job summary when `TF_BUILD=true` on Azure DevOps
+
+---
+
+## `buildcharts version`
+
+```bash
+buildcharts version
+```
+
+Prints the BuildCharts version, build timestamp, OS and architecture, CPU and memory, and the current .NET runtime version.

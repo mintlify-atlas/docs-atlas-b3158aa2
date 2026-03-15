@@ -1,0 +1,79 @@
+---
+title: "Plugins"
+description: "Built-in plugins that extend generation before and after HCL creation."
+---
+
+Plugins hook into the `buildcharts` generation pipeline to run custom logic before and/or after the build configuration is produced. They are an extensibility point for tasks such as injecting environment secrets, generating additional output files, or performing validation.
+
+## What plugins can do
+
+- Prepare external state before generation
+- Write secret or debug files under `.buildcharts`
+- Patch the generated `docker-bake.hcl`
+- Generate additional output files
+- Perform validation or environment setup
+
+## How to enable plugins
+
+Declare a top-level `plugins` list in your `build.yml`. Each entry is the name of a registered plugin. When you run `buildcharts generate`, plugins execute in sequence and can modify the generated HCL or write additional files.
+
+```yaml
+plugins:
+  - NuGetAuthenticate@v1
+  - TestcontainersDinD@v1
+```
+
+<Note>
+Plugins are executed in the order they appear in the list. List multiple plugins one per line.
+</Note>
+
+## Built-in plugins
+
+BuildCharts currently loads built-in plugins only. If you need a new plugin, you must extend the BuildCharts tool and ship it as part of your BuildCharts distribution.
+
+<Columns cols={2}>
+  <Card title="NuGetAuthenticate@v1" icon="key" href="/reference/plugin-nuget-authenticate">
+    Injects NuGet feed credentials into the generated build environment before generation runs.
+  </Card>
+  <Card title="TestcontainersDinD@v1" icon="box" href="/reference/plugin-testcontainers-dind">
+    Configures Docker-in-Docker for Testcontainers-based test targets.
+  </Card>
+</Columns>
+
+Use this page for the plugin model and `build.yml` wiring, then use the plugin reference pages for behavior and environment details.
+
+## Full example
+
+```yaml
+version: v1beta
+
+plugins:
+  - TestcontainersDinD@v1
+
+variables:
+  - VERSION
+  - COMMIT
+
+targets:
+  src/dotnet-testcontainers.csproj:
+    type: [build, test]
+    with:
+      base: mcr.microsoft.com/dotnet/sdk:10.0
+```
+
+## Related pages
+
+<Columns cols={2}>
+  <Card title="NuGetAuthenticate@v1" icon="key" href="/reference/plugin-nuget-authenticate">
+    Reference for the NuGet authentication plugin.
+  </Card>
+  <Card title="TestcontainersDinD@v1" icon="box" href="/reference/plugin-testcontainers-dind">
+    Reference for the Testcontainers Docker-in-Docker plugin.
+  </Card>
+  <Card title="Metadata" icon="file-text" href="/core-features/metadata">
+    Full `build.yml` schema including the `plugins` field.
+  </Card>
+  <Card title="Generate" icon="play" href="/core-features/generate">
+    How plugins run as part of the generation pipeline.
+  </Card>
+</Columns>

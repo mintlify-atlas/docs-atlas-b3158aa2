@@ -1,0 +1,239 @@
+---
+title: "Examples"
+description: "Sample repositories for common BuildCharts targets and plugins."
+---
+
+The source repository includes small samples that mirror the supported target shapes. Each one is a working starting point for a specific target type or plugin.
+
+## Sample projects
+
+<CardGroup cols={2}>
+  <Card title="dotnet-docker" icon="docker" href="https://github.com/eddietisma/buildcharts/tree/main/samples/dotnet-docker">
+    Build a .NET app and export a Docker image.
+  </Card>
+  <Card title="dotnet-test" icon="flask" href="https://github.com/eddietisma/buildcharts/tree/main/samples/dotnet-test">
+    Run tests and export `trx` files for test results.
+  </Card>
+  <Card title="dotnet-nuget" icon="cube" href="https://github.com/eddietisma/buildcharts/tree/main/samples/dotnet-nuget">
+    Pack a library and export `.nupkg` files.
+  </Card>
+  <Card title="dotnet-testcontainers" icon="server" href="https://github.com/eddietisma/buildcharts/tree/main/samples/dotnet-testcontainers">
+    Use `TestcontainersDinD@v1` for container-based integration tests.
+  </Card>
+</CardGroup>
+
+## Common run pattern
+
+Each sample follows the same flow:
+
+```bash
+dotnet tool restore
+buildcharts generate
+docker buildx bake --file .buildcharts/docker-bake.hcl --no-cache
+```
+
+Use the samples as a starting point when you need a known-good layout for a target type or plugin.
+
+## Target configurations
+
+<Tabs>
+  <Tab title="Build">
+    A `build` target compiles the solution. You must define exactly one `build` target across `build.yml`.
+
+    ```yaml
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+    version: v1beta
+    variables:
+      - VERSION: "1.0.0-local"
+      - COMMIT: ""
+    targets:
+      buildcharts.sln: build
+    ```
+
+    The `build` type uses `type=cacheonly` in the generated Bake plan — no file is exported, but the build cache is populated.
+  </Tab>
+
+  <Tab title="Docker image">
+    A `docker` target builds and exports a Docker image to the local daemon.
+
+    <CodeGroup>
+      ```yaml build.yml
+      # yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+      version: v1beta
+      variables:
+        - VERSION: "1.0.0-local"
+        - COMMIT: ""
+      targets:
+        buildcharts.sln: build
+        src/App/App.csproj:
+          type: docker
+          with:
+            base: mcr.microsoft.com/dotnet/runtime:10.0
+            tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+      ```
+
+      ```yaml Chart.yaml
+      dependencies:
+        - name: dotnet-build
+          alias: build
+          version: 0.0.1
+          repository: oci://registry-1.docker.io/buildcharts
+        - name: dotnet-docker
+          alias: docker
+          version: 0.0.1
+          repository: oci://registry-1.docker.io/buildcharts
+      ```
+    </CodeGroup>
+
+    The `docker` type uses `type=docker` in the generated Bake plan and loads the image into your local Docker daemon.
+  </Tab>
+
+  <Tab title="Test">
+    A `test` target runs tests and exports `trx` result files to `.buildcharts/output/test`.
+
+    <CodeGroup>
+      ```yaml build.yml
+      # yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+      version: v1beta
+      variables:
+        - VERSION: "1.0.0-local"
+        - COMMIT: ""
+      targets:
+        buildcharts.sln: build
+        src/App.Tests/App.Tests.csproj:
+          type: test
+          with:
+            base: mcr.microsoft.com/dotnet/sdk:10.0
+      ```
+
+      ```yaml Chart.yaml
+      dependencies:
+        - name: dotnet-build
+          alias: build
+          version: 0.0.1
+          repository: oci://registry-1.docker.io/buildcharts
+        - name: dotnet-test
+          alias: test
+          version: 0.0.1
+          repository: oci://registry-1.docker.io/buildcharts
+      ```
+    </CodeGroup>
+
+    Results are exported to `.buildcharts/output/test`.
+  </Tab>
+
+  <Tab title="NuGet">
+    A `nuget` target packs a library and exports `.nupkg` files to `.buildcharts/output/nuget`.
+
+    <CodeGroup>
+      ```yaml build.yml
+      # yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+      version: v1beta
+      variables:
+        - VERSION: "1.0.0-local"
+        - COMMIT: ""
+      targets:
+        buildcharts.sln: build
+        src/MyLib/MyLib.csproj:
+          type: nuget
+          with:
+            base: mcr.microsoft.com/dotnet/sdk:10.0
+      ```
+
+      ```yaml Chart.yaml
+      dependencies:
+        - name: dotnet-build
+          alias: build
+          version: 0.0.1
+          repository: oci://registry-1.docker.io/buildcharts
+        - name: dotnet-nuget
+          alias: nuget
+          version: 0.0.1
+          repository: oci://registry-1.docker.io/buildcharts
+      ```
+    </CodeGroup>
+
+    Packages are exported to `.buildcharts/output/nuget`.
+  </Tab>
+</Tabs>
+
+## Multi-stage example
+
+You can define multiple target types for the same source path using a sequence of entries. This is useful when a project needs to both produce a Docker image and run tests.
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+version: v1beta
+variables:
+  - VERSION: "1.0.0-local"
+  - COMMIT: ""
+targets:
+  buildcharts.sln: build
+  src/App/App.csproj:
+    - type: build
+      with:
+        base: mcr.microsoft.com/dotnet/sdk:10.0
+    - type: docker
+      with:
+        base: mcr.microsoft.com/dotnet/runtime:10.0
+        tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+```
+
+You can also combine types that share the same `with` block using a type list:
+
+```yaml
+targets:
+  src/App/App.csproj:
+    type: [build, test]
+    with:
+      base: mcr.microsoft.com/dotnet/sdk:10.0
+```
+
+## Matrix expansion example
+
+Use `types.<type>.matrix` to expand every target of a given type across one or more axes. Each axis value is exposed as an uppercase snake case build arg in the generated Bake plan.
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+version: v1beta
+variables:
+  - VERSION: "1.0.0-local"
+  - COMMIT: ""
+targets:
+  buildcharts.sln: build
+  src/App/App.csproj:
+    type: docker
+    with:
+      base: mcr.microsoft.com/dotnet/runtime:10.0
+      tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+types:
+  docker:
+    matrix:
+      platform: ["linux/amd64", "linux/arm64"]
+```
+
+In this example the generated Bake plan exposes `PLATFORM` as a build arg and creates one target per platform value.
+
+## Testcontainers example
+
+The `TestcontainersDinD@v1` plugin enables container-based integration tests. Add it to `plugins` before your test targets.
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+version: v1beta
+variables:
+  - VERSION: "1.0.0-local"
+  - COMMIT: ""
+plugins:
+  - TestcontainersDinD@v1
+targets:
+  buildcharts.sln: build
+  src/App.IntegrationTests/App.IntegrationTests.csproj:
+    type: test
+    with:
+      base: mcr.microsoft.com/dotnet/sdk:10.0
+```
+
+<Note>
+  The `TestcontainersDinD@v1` plugin configures Docker-in-Docker support so tests that spin up containers can run inside BuildKit.
+</Note>

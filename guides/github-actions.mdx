@@ -1,0 +1,162 @@
+---
+title: "GitHub Actions"
+description: "Run BuildCharts in GitHub Actions with the generated workflow and Buildx Bake."
+---
+
+`buildcharts init` creates `.github/workflows/buildcharts.yml` automatically when the Git remote in `.git/config` points to GitHub. You can also set up the workflow manually.
+
+## Setup
+
+<Steps>
+  <Step title="Scaffold the workflow">
+    Run `buildcharts init` in your repository. When the Git remote points to GitHub, the CLI writes `.github/workflows/buildcharts.yml` for you.
+
+    ```bash
+    buildcharts init
+    ```
+
+    If you are setting up manually, create `.github/workflows/buildcharts.yml` with the content below.
+  </Step>
+
+  <Step title="Add the workflow file">
+    This is the complete workflow template shipped by the CLI:
+
+    ```yaml
+    on:
+      push:
+        branches: [main]
+      pull_request:
+
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+
+          - name: Set up BuildCharts
+            uses: buildcharts/setup-action@v1
+
+          - name: Generate BuildCharts
+            uses: buildcharts/generate-action@v1
+
+          - name: Set up Docker Buildx
+            uses: docker/setup-buildx-action@v3
+
+          - name: Docker build and test
+            uses: docker/bake-action@v6
+            with:
+              files: .buildcharts/docker-bake.hcl
+            env:
+              VERSION: ${{ github.ref_name }}
+              COMMIT: ${{ github.sha }}
+    ```
+
+    The three BuildCharts-specific steps are:
+    - `buildcharts/setup-action@v1` — installs the CLI
+    - `buildcharts/generate-action@v1` — generates `.buildcharts/docker-bake.hcl`
+    - `docker/bake-action@v6` — runs the generated plan
+  </Step>
+
+  <Step title="Configure registry credentials (private registries)">
+    `generate`, `update`, and `pull` read Docker registry credentials from `DOCKER_CONFIG` or the default Docker config file. If your charts live in a private OCI registry, sign in before the BuildCharts steps run.
+  </Step>
+
+  <Step title="Enable caching (optional)">
+    Configure a BuildKit cache backend to speed up repeated runs. On GitHub Actions, `type=gha` is a common choice.
+
+    See [Enable caching](#enable-caching) below for the full example.
+  </Step>
+
+  <Step title="Add a build summary (optional)">
+    Add a `buildcharts summary` step after Bake to append a Markdown summary to the GitHub Actions job summary.
+
+    See [Build summary](#build-summary) below for the full example.
+  </Step>
+</Steps>
+
+## Enable caching
+
+If you run builds frequently, configure a cache backend for BuildKit. Use `docker/bake-action`'s `set` input to attach cache options to the generated `_common` target:
+
+```yaml
+- name: Docker build and test
+  uses: docker/bake-action@v6
+  with:
+    files: .buildcharts/docker-bake.hcl
+    set: |
+      _common.cache-from=type=gha,scope=buildcharts
+      _common.cache-to=type=gha,scope=buildcharts,mode=max
+  env:
+    VERSION: ${{ github.ref_name }}
+    COMMIT: ${{ github.sha }}
+```
+
+<Tip>
+  Read more about BuildKit cache backends in the [Docker documentation](https://docs.docker.com/build/cache/backends/).
+</Tip>
+
+## Build summary
+
+`buildcharts summary` appends Markdown to `GITHUB_STEP_SUMMARY` when that environment variable is present. Add this step after Bake to get a job summary:
+
+```yaml
+- name: Build summary
+  run: buildcharts summary
+```
+
+The command also exports:
+- `.buildcharts/output/SUMMARY.md`
+- `.buildcharts/output/buildcharts.dockerbuild`
+
+## Working with private registries
+
+`generate`, `update`, and `pull` read Docker registry credentials from `DOCKER_CONFIG` or the default Docker config file. If your charts live in a private OCI registry, sign in before the BuildCharts steps run.
+
+## Complete workflow with caching and summary
+
+A full production-ready workflow combining caching and a build summary:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up BuildCharts
+        uses: buildcharts/setup-action@v1
+
+      - name: Generate BuildCharts
+        uses: buildcharts/generate-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker build and test
+        uses: docker/bake-action@v6
+        with:
+          files: .buildcharts/docker-bake.hcl
+          set: |
+            _common.cache-from=type=gha,scope=buildcharts
+            _common.cache-to=type=gha,scope=buildcharts,mode=max
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+
+      - name: Build summary
+        run: buildcharts summary
+```
+
+## Actions reference
+
+| Action | What it does |
+| --- | --- |
+| `buildcharts/setup-action@v1` | Installs the BuildCharts CLI |
+| `buildcharts/generate-action@v1` | Generates `.buildcharts/docker-bake.hcl` |
+| `docker/setup-buildx-action@v3` | Sets up Docker Buildx |
+| `docker/bake-action@v6` | Runs the generated Bake plan |

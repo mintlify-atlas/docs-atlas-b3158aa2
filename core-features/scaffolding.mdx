@@ -1,0 +1,161 @@
+---
+title: "Scaffolding"
+description: "Get started by automatically creating build metadata with buildcharts init."
+---
+
+`buildcharts init` scaffolds the files BuildCharts needs to generate a Bake plan. Instead of starting from an empty config, it inspects the repository and writes a working starting point for you.
+
+## What scaffolding does
+
+Scaffolding inspects a repository, infers a reasonable starting build model, and writes the metadata files:
+
+- Find recognizable project files
+- Infer which build stage types the repository needs
+- Generate a starter `build.yml`
+- Generate a matching `charts/buildcharts/Chart.yaml`
+
+You can think of this as automatic stage wiring. BuildCharts looks at the repository shape and scaffolds the most likely target types for each project.
+
+## How detection works
+
+The current implementation is file-type driven. It detects the repository type first, then applies language-specific scaffolding rules.
+
+<Note>
+Today, the only supported repository type is .NET. A `.sln` or `.slnx` file identifies the repository as a supported .NET solution.
+</Note>
+
+For .NET repositories, the generated stages are based on the [buildcharts/dotnet](https://github.com/buildcharts/charts/tree/main/dotnet) chart set.
+
+### What it detects in .NET repositories
+
+- A `.sln` or `.slnx` solution file
+- Test projects from common test package references such as `Microsoft.NET.Test.Sdk`, `xunit`, or `nunit`
+- NuGet package projects from package metadata such as `<PackageId>` or `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>`
+- Docker targets when a project folder contains a local `Dockerfile`
+- The .NET SDK version from `global.json` or target frameworks
+
+## What it creates
+
+In a supported .NET repository, `buildcharts init` creates:
+
+<Columns cols={2}>
+  <Card title="build.yml" icon="file">
+    The primary build metadata file. Describes targets, variables, and plugins.
+  </Card>
+  <Card title="charts/buildcharts/Chart.yaml" icon="package">
+    Maps chart aliases to OCI-hosted stage implementations.
+  </Card>
+  <Card title=".github/workflows/buildcharts.yml" icon="git-branch">
+    GitHub Actions workflow. Created only when the repository remote points to GitHub.
+  </Card>
+</Columns>
+
+## Generated files
+
+### `build.yml`
+
+The scaffolded `build.yml` includes:
+
+- `version: v1beta`
+- `VERSION` and `COMMIT` variables
+- One `build` target for the solution
+- Additional `test`, `nuget`, or `docker` targets when matching projects are found
+
+BuildCharts does not just detect that a repository is .NET — it also tries to map each discovered file to the correct stage type automatically.
+
+```yaml
+version: v1beta
+
+variables:
+  - VERSION
+  - COMMIT
+
+targets:
+  buildcharts.sln: build
+  src/App.Tests/App.Tests.csproj: test
+  src/App/App.csproj:
+    type: docker
+    with:
+      base: mcr.microsoft.com/dotnet/runtime:10.0
+      tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+```
+
+### `charts/buildcharts/Chart.yaml`
+
+The scaffolded `Chart.yaml` maps default aliases to OCI-hosted charts:
+
+```yaml
+apiVersion: v2
+name: buildcharts
+version: 0.0.1
+description: A meta-chart to define build pipeline targets and templates
+type: application
+
+dependencies:
+  - name: dotnet-build
+    alias: build
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-test
+    alias: test
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-nuget
+    alias: nuget
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-docker
+    alias: docker
+    version: 0.0.2
+    repository: oci://registry-1.docker.io/buildcharts
+```
+
+## Typical flow
+
+<Steps>
+  <Step title="Scaffold metadata">
+    Run `buildcharts init` in the repository root. BuildCharts detects your project types and writes the starter files.
+
+    ```bash
+    buildcharts init
+    ```
+  </Step>
+  <Step title="Pin chart digests">
+    Run `buildcharts update` to resolve the current digest for each chart dependency and write `Chart.lock`.
+
+    ```bash
+    buildcharts update
+    ```
+  </Step>
+  <Step title="Generate the Bake plan">
+    Run `buildcharts generate` to validate metadata, pull charts, run plugins, and write `.buildcharts/docker-bake.hcl`.
+
+    ```bash
+    buildcharts generate
+    ```
+  </Step>
+  <Step title="Execute the build">
+    Run the generated plan with Docker Buildx Bake.
+
+    ```bash
+    docker buildx bake --file .buildcharts/docker-bake.hcl
+    ```
+  </Step>
+</Steps>
+
+## Related pages
+
+<Columns cols={2}>
+  <Card title="Metadata" icon="file-text" href="/core-features/metadata">
+    Learn the full `build.yml` schema and all supported fields.
+  </Card>
+  <Card title="Charts" icon="package" href="/charts">
+    Understand OCI-hosted charts and the `Chart.yaml` dependency format.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    Full reference for `buildcharts init` and all other commands.
+  </Card>
+</Columns>

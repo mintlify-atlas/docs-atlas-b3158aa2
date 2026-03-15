@@ -1,0 +1,54 @@
+---
+title: "Install"
+description: "Install the BuildCharts CLI and verify that your environment is ready."
+---
+
+## Prerequisites
+
+- Docker with `buildx`
+- .NET 10 SDK (only if you install BuildCharts as a .NET tool)
+
+## Install BuildCharts
+
+<Steps>
+  <Step title="Choose your install method">
+    Install BuildCharts as a global tool for personal use, or add it to a local tool manifest to pin the version across your repository.
+
+    <CodeGroup>
+
+    ```bash Global
+    dotnet tool install --global dotnet-buildcharts
+    ```
+
+    ```bash Local manifest
+    dotnet new tool-manifest
+    dotnet tool install dotnet-buildcharts
+    ```
+
+    </CodeGroup>
+
+    The global install makes the `buildcharts` command available in your shell immediately.
+
+    Use the local manifest when you want the repository to pin the CLI version.
+  </Step>
+
+  <Step title="Restore the local tool (local install only)">
+    If you used the local tool manifest approach, restore the tool inside the repo before running any commands:
+
+    ```bash
+    dotnet tool restore
+    ```
+  </Step>
+
+  <Step title="Verify the installation">
+    Confirm BuildCharts is available and check the installed version:
+
+    ```bash
+    buildcharts version
+    ```
+
+    This prints the BuildCharts version, build timestamp, OS and architecture, CPU and memory, and the current .NET runtime version.
+  </Step>
+</Steps>
+
+For build-time dependencies and offline-friendly setups, see [Considerations](/considerations).

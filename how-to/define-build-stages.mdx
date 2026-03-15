@@ -1,0 +1,178 @@
+---
+title: "Define build stages"
+description: "Model build, test, package, and image stages with BuildCharts target definitions."
+---
+
+Use `targets` in `build.yml` to describe the stages BuildCharts should generate.
+
+## Start with one build stage
+
+Every `build.yml` must contain exactly one target with `type: build`.
+
+```yaml
+targets:
+  buildcharts.sln:
+    type: build
+    with:
+      base: mcr.microsoft.com/dotnet/sdk:10.0
+```
+
+<Note>
+BuildCharts validates the single-`build`-target rule during `buildcharts generate`. Generation fails if no `build` target is found or if more than one is declared.
+</Note>
+
+## Supported `type` forms
+
+The `type` field accepts three forms.
+
+<Tabs>
+  <Tab title="Scalar">
+    A single type as a plain string:
+
+    ```yaml
+    targets:
+      buildcharts.sln: build
+    ```
+
+    This is the shortest form. It is equivalent to writing `type: build` with no `with` block.
+  </Tab>
+  <Tab title="Mapping with one type">
+    A mapping with a `type` key and optional `with` block:
+
+    ```yaml
+    targets:
+      src/App/App.csproj:
+        type: docker
+        with:
+          base: mcr.microsoft.com/dotnet/runtime:10.0
+          tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+    ```
+  </Tab>
+  <Tab title="Array of types">
+    Multiple types that share the same `with` block:
+
+    ```yaml
+    targets:
+      src/App/App.csproj:
+        type: [build, test]
+        with:
+          base: mcr.microsoft.com/dotnet/sdk:10.0
+    ```
+
+    BuildCharts expands this into two stage definitions internally.
+  </Tab>
+  <Tab title="Sequence of entries">
+    A sequence where each entry has its own `type` and `with` block:
+
+    ```yaml
+    targets:
+      src/App/App.csproj:
+        - type: build
+          with:
+            base: mcr.microsoft.com/dotnet/sdk:10.0
+        - type: test
+          with:
+            base: mcr.microsoft.com/dotnet/sdk:10.0
+        - type: docker
+          with:
+            base: mcr.microsoft.com/dotnet/runtime:10.0
+            tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+    ```
+
+    Use this form when stages need different `with` blocks.
+  </Tab>
+</Tabs>
+
+## Stage aliases and `Chart.yaml`
+
+Each `type` value must match an `alias` declared in `charts/buildcharts/Chart.yaml`. If `docker` is not declared as an alias, `buildcharts generate` fails.
+
+For example, this `Chart.yaml` makes `build`, `test`, `nuget`, and `docker` valid type values:
+
+```yaml
+apiVersion: v2
+name: buildcharts
+version: 0.0.1
+description: A meta-chart to define build pipeline targets and templates
+type: application
+
+dependencies:
+  - name: dotnet-build
+    alias: build
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-test
+    alias: test
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-nuget
+    alias: nuget
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-docker
+    alias: docker
+    version: 0.0.2
+    repository: oci://registry-1.docker.io/buildcharts
+```
+
+If you define `type: publish` in `build.yml`, you also need a chart dependency whose `alias` is `publish`.
+
+## Built-in target variables
+
+Every generated target receives a small set of build args automatically:
+
+| Variable | Meaning |
+| --- | --- |
+| `BUILDCHARTS_SRC` | The target source path, for example `src/MyApp/MyApp.csproj` |
+| `BUILDCHARTS_TYPE` | The generated target type, for example `build` |
+
+Charts can use these variables inside their Dockerfiles and build logic. `BUILDCHARTS_SRC` lets a chart know which source entry it is building, and `BUILDCHARTS_TYPE` identifies the resolved stage type behind the chart alias.
+
+## Pass stage-specific settings
+
+The current generator recognizes these keys under `with`:
+
+| Key | What it controls |
+| --- | --- |
+| `base` | Named `base` image context |
+| `tags` | Image tags for `docker` stages |
+| `dockerfile` | Override the chart Dockerfile path |
+| `allow` | BuildKit entitlements |
+| `args` | Build args passed into the chart |
+
+Example with multiple `with` keys:
+
+```yaml
+targets:
+  src/Library/Library.csproj:
+    - type: nuget
+      with:
+        args:
+          SOURCELINK_STRICT: 0
+    - type: docker
+      with:
+        base: mcr.microsoft.com/dotnet/runtime:10.0
+        dockerfile: ./Dockerfile
+        allow: ["network.host"]
+        tags: ["docker.io/example/library:${VERSION}-${COMMIT}"]
+```
+
+<Tip>
+`args` values can be strings or arrays. Array values are emitted as comma-separated strings in the generated HCL. If you omit `dockerfile`, BuildCharts uses `./.buildcharts/<chart-name>/Dockerfile`.
+</Tip>
+
+## Expand a stage with a matrix
+
+Use `types` at the top level of `build.yml` when every target of the same type should fan out across a matrix:
+
+```yaml
+types:
+  docker:
+    matrix:
+      platform: ["linux/amd64", "linux/arm64"]
+```
+
+Every target of that type is expanded across the matrix axes. Each axis value is exposed to the chart as an uppercase snake case build arg. In this example, the generated Bake plan exposes `PLATFORM`.

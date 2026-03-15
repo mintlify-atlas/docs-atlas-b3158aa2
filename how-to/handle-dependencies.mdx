@@ -1,0 +1,123 @@
+---
+title: "Handle dependencies"
+description: "Reuse generated stages inside Dockerfiles using Bake target contexts."
+---
+
+You can make one BuildCharts stage depend on another, even when the stages are implemented in different chart Dockerfiles.
+
+BuildCharts does this through Docker Buildx Bake target contexts. A context maps a name to either:
+- another Bake target (`target:<name>`)
+- an image (`docker-image://...`)
+
+<Note>
+This page covers stage-to-stage dependencies wired through Bake contexts. For chart dependencies declared in `Chart.yaml`, see [Charts](/charts).
+</Note>
+
+## Use the default build stage context
+
+For every generated target except `build`, BuildCharts automatically wires a context named `build` to the `build` target:
+
+```hcl
+contexts = {
+  build = "target:build"
+}
+```
+
+This is why chart Dockerfiles can use `build` as an upstream stage:
+
+```dockerfile
+FROM build AS pre-docker
+```
+
+This works because `target:build` refers to the generated Bake target named `build`. BuildCharts requires exactly one `build` target in `build.yml`, so this `build` context is stable and unambiguous.
+
+## Depend on other targets
+
+Linking arbitrary targets to one another is not yet configurable in `build.yml`, but you can wire them at execution time using Bake overrides.
+
+Bake supports linking any target to any other target by using `target:<name>` as a context value. The conceptual wiring looks like this:
+
+```hcl
+contexts = {
+  build   = "target:build"
+  publish = "target:publish"
+}
+```
+
+Once a target is exposed as a context, you can:
+- inherit from it: `FROM publish`
+- copy files from it: `COPY --from=publish /path /path`
+
+<Steps>
+  <Step title="Apply the context override at execution time">
+    Because `.buildcharts/docker-bake.hcl` is generated, apply this kind of wiring with a `--set` override:
+
+    ```bash
+    docker buildx bake --file .buildcharts/docker-bake.hcl docker \
+      --set docker.contexts.publish=target:publish
+    ```
+  </Step>
+  <Step title="Update the chart Dockerfile">
+    Update the relevant chart Dockerfile to consume the context:
+
+    ```dockerfile
+    FROM publish AS pre-docker
+    # or
+    COPY --from=publish /artifacts /artifacts
+    ```
+  </Step>
+</Steps>
+
+## Understanding chart dependencies in `Chart.yaml`
+
+Chart dependencies are declared in `charts/buildcharts/Chart.yaml`. Each dependency maps an OCI-hosted chart to an alias that you reference as a `type` in `build.yml`:
+
+```yaml
+dependencies:
+  - name: dotnet-build
+    alias: build
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+
+  - name: dotnet-docker
+    alias: docker
+    version: 0.0.2
+    repository: oci://registry-1.docker.io/buildcharts
+```
+
+Each dependency needs `name`, `alias`, `version`, and `repository`. If a `type` in `build.yml` does not match a declared alias, `buildcharts generate` fails.
+
+## Version pinning and lock files
+
+BuildCharts supports an optional `charts/buildcharts/Chart.lock` file for more repeatable builds.
+
+When you run `buildcharts update`, BuildCharts resolves chart digests and writes the lock file. If the lock file exists, `buildcharts generate` uses it to detect dependency drift before it renders the Bake plan.
+
+<Warning>
+If the lock file and the resolved chart state do not match, generation stops with a discrepancy warning and tells you to refresh the lock file.
+</Warning>
+
+If the lock file does not exist, generation still works, but chart resolution follows the current registry tags instead of pinned digests.
+
+### Update dependencies
+
+Run `buildcharts update` to resolve the latest chart digests and refresh `Chart.lock`:
+
+```bash
+buildcharts update
+```
+
+This re-resolves every dependency in `Chart.yaml` against the registry and writes the updated digests to `Chart.lock`.
+
+### Drift detection
+
+When `Chart.lock` exists, `buildcharts generate` compares:
+- `Chart.yaml`
+- `Chart.lock`
+- the current registry manifest digest
+
+If these do not match, generation stops. Re-run `buildcharts update` to synchronize the lock file, then re-run `buildcharts generate`.
+
+<Tip>
+Commit `Chart.lock` to source control so every build uses the same pinned chart digests. This is the recommended baseline for reproducible builds.
+</Tip>

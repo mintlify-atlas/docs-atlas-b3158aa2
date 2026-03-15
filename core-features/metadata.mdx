@@ -1,0 +1,197 @@
+---
+title: "Metadata"
+description: "Repository metadata in build.yml for BuildCharts generation."
+---
+
+Use `build.yml` to describe what your repository should build. The generator reads this file from the repository root.
+
+## Schema validation
+
+Add the shipped schema declaration to enable editor validation and auto-completion:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/eddietisma/buildcharts/main/schemas/v1beta.json
+```
+
+## Top-level fields
+
+<AccordionGroup>
+  <Accordion title="version" defaultOpen={true}>
+    String value for the config version. Use `v1beta`.
+
+    ```yaml
+    version: v1beta
+    ```
+  </Accordion>
+
+  <Accordion title="variables">
+    Variables become Bake variables and are also exposed through the generated `_common` target args.
+
+    Supported forms:
+
+    **Simple list (names only):**
+
+    ```yaml
+    variables:
+      - VERSION
+      - COMMIT
+    ```
+
+    **List with inline defaults:**
+
+    ```yaml
+    variables:
+      - VERSION: "1.0.0-local"
+      - COMMIT: ""
+    ```
+
+    **List with object defaults:**
+
+    ```yaml
+    variables:
+      - VERSION:
+          default: "1.0.0-local"
+      - COMMIT: ""
+    ```
+
+    **Mapping form:**
+
+    ```yaml
+    variables:
+      VERSION: "1.0.0-local"
+      COMMIT: ""
+    ```
+  </Accordion>
+
+  <Accordion title="plugins">
+    Optional list of plugin names to run during generation. Plugins execute in the order listed.
+
+    ```yaml
+    plugins:
+      - NuGetAuthenticate@v1
+      - TestcontainersDinD@v1
+    ```
+
+    See [Plugins](/core-features/plugins) for full details.
+  </Accordion>
+
+  <Accordion title="targets" defaultOpen={true}>
+    Required mapping of source path to one or more target definitions. You must define exactly one `build` target across the whole file.
+
+    **Single scalar** — the simplest form, maps a path to a single type:
+
+    ```yaml
+    targets:
+      buildcharts.sln: build
+    ```
+
+    **Mapping with one type:**
+
+    ```yaml
+    targets:
+      src/App/App.csproj:
+        type: docker
+        with:
+          base: mcr.microsoft.com/dotnet/runtime:10.0
+          tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+    ```
+
+    **Mapping with multiple types sharing the same `with` block:**
+
+    ```yaml
+    targets:
+      src/App/App.csproj:
+        type: [build, test]
+        with:
+          base: mcr.microsoft.com/dotnet/sdk:10.0
+    ```
+
+    **Sequence of entries** — when a single path needs multiple target definitions with different `with` blocks:
+
+    ```yaml
+    targets:
+      src/App/App.csproj:
+        - type: build
+          with:
+            base: mcr.microsoft.com/dotnet/sdk:10.0
+        - type: docker
+          with:
+            base: mcr.microsoft.com/dotnet/runtime:10.0
+            tags: ["docker.io/example/app:${VERSION}-${COMMIT}"]
+    ```
+
+    <Warning>
+      You must define exactly one `build` target across the entire file. `buildcharts generate` validates this before writing any output.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="types">
+    Optional type-level matrix expansion. Use `types.<type>.matrix` to expand every target of a given type across one or more axes.
+
+    ```yaml
+    types:
+      docker:
+        matrix:
+          platform: ["linux/amd64", "linux/arm64"]
+    ```
+
+    Every target of that type is expanded across the matrix axes. Each axis value is exposed to the chart as an uppercase snake case build arg. In this example, the generated Bake plan exposes `PLATFORM`.
+  </Accordion>
+</AccordionGroup>
+
+## `with` keys
+
+The schema allows free-form objects under `with`, but the current generator emits these keys into the Bake plan:
+
+| Key | Effect |
+| --- | --- |
+| `base` | Adds a named `base` context using `docker-image://...` |
+| `tags` | Sets Bake tags for the generated target |
+| `dockerfile` | Overrides the default chart Dockerfile path |
+| `allow` | Sets BuildKit entitlements such as `network.host` |
+| `args` | Adds per-target build args |
+
+<Note>
+- `args` values can be strings or arrays.
+- Array values are emitted as comma-separated strings in the generated HCL.
+- If you omit `dockerfile`, BuildCharts uses `./.buildcharts/<chart-name>/Dockerfile`.
+</Note>
+
+## Alias resolution
+
+Each target `type` must match an alias in `charts/buildcharts/Chart.yaml`. If you define `type: publish`, you also need a chart dependency whose `alias` is `publish`.
+
+```yaml
+# Chart.yaml
+dependencies:
+  - name: dotnet-publish
+    alias: publish          # <-- must match the type in build.yml
+    version: 0.0.1
+    repository: oci://registry-1.docker.io/buildcharts
+```
+
+```yaml
+# build.yml
+targets:
+  src/App/App.csproj:
+    type: publish           # <-- must match an alias in Chart.yaml
+```
+
+If the alias is not declared, `buildcharts generate` fails with a validation error.
+
+## Related pages
+
+<Columns cols={2}>
+  <Card title="Scaffolding" icon="wand" href="/core-features/scaffolding">
+    Auto-generate a starter `build.yml` with `buildcharts init`.
+  </Card>
+  <Card title="Generate" icon="play" href="/core-features/generate">
+    Turn `build.yml` into an executable Docker Bake plan.
+  </Card>
+  <Card title="Charts" icon="package" href="/charts">
+    Learn how chart aliases are declared in `Chart.yaml`.
+  </Card>
+  <Card title="Plugins" icon="puzzle" href="/core-features/plugins">
+    Extend generation with built-in plugins.
+  </Card>
+</Columns>

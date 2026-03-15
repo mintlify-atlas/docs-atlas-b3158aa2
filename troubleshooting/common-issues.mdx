@@ -1,0 +1,93 @@
+---
+title: "Common issues"
+description: "Diagnose the most common BuildCharts setup, validation, and generation failures."
+---
+
+This page covers the most common problems you can hit when running `buildcharts`.
+
+<AccordionGroup>
+  <Accordion title="`buildcharts init` says the project type is unknown">
+    `init` currently supports .NET repositories only and expects a `.sln` or `.slnx` file.
+
+    Check:
+    - You are running the command from the repository root.
+    - The repository contains a solution file.
+  </Accordion>
+
+  <Accordion title="`buildcharts generate` cannot find `charts/buildcharts/Chart.yaml`">
+    BuildCharts expects to run from the repository root.
+
+    Fix:
+    - Run the command from the repo root.
+    - Or scaffold the repo first with `buildcharts init`.
+  </Accordion>
+
+  <Accordion title="`buildcharts generate` says the lock file is out of sync">
+    This happens when `charts/buildcharts/Chart.lock` no longer matches `charts/buildcharts/Chart.yaml` or the current registry digests.
+
+    Run `buildcharts update` to regenerate the lock file:
+
+    ```bash
+    buildcharts update
+    ```
+
+    If you intentionally want to skip lock validation for one run:
+
+    ```bash
+    buildcharts generate --ignore-lock
+    ```
+  </Accordion>
+
+  <Accordion title="`buildcharts generate` says there is no build target">
+    Every `build.yml` must contain exactly one target with `type: build`.
+
+    Check:
+    - You have one and only one `build` target.
+    - The target type is spelled correctly.
+  </Accordion>
+
+  <Accordion title="`buildcharts generate` says a target type is unknown">
+    Each target `type` in `build.yml` must match an alias in `charts/buildcharts/Chart.yaml`.
+
+    Example `Chart.yaml` dependency entry:
+
+    ```yaml
+    dependencies:
+      - name: dotnet-test
+        alias: test
+        version: 0.0.1
+        repository: oci://registry-1.docker.io/buildcharts
+    ```
+
+    If `build.yml` uses `type: test`, the alias must exist in `Chart.yaml`.
+  </Accordion>
+
+  <Accordion title="`buildcharts summary` cannot find Docker build history">
+    `buildcharts summary` uses the latest Docker Buildx history. It only works after you have run a Bake build.
+
+    Fix — run each command in order:
+
+    ```bash
+    buildcharts generate
+    docker buildx bake --file .buildcharts/docker-bake.hcl
+    buildcharts summary
+    ```
+  </Accordion>
+
+  <Accordion title="`--use-inline-dockerfiles` fails with a missing Dockerfile">
+    When you use `buildcharts generate --use-inline-dockerfiles`, BuildCharts expects the pulled chart Dockerfiles to exist under `.buildcharts/<chart-name>/Dockerfile`.
+
+    Fix:
+    - Rerun `buildcharts generate`.
+    - Verify chart pull succeeded.
+    - Verify the referenced chart alias exists in `Chart.yaml`.
+  </Accordion>
+
+  <Accordion title="Registry authentication failures">
+    `pull`, `update`, and `generate` use Docker credentials from:
+    - `DOCKER_CONFIG/config.json`
+    - `~/.docker/config.json`
+
+    If your OCI registry is private, authenticate with Docker before running BuildCharts.
+  </Accordion>
+</AccordionGroup>

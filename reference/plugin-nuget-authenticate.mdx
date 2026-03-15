@@ -1,0 +1,66 @@
+---
+title: "NuGetAuthenticate@v1"
+description: "Inject Azure Artifacts credentials into generated builds with NuGetAuthenticate@v1."
+---
+
+This plugin configures NuGet tools to authenticate with Azure Artifacts and other NuGet repositories. It behaves similarly to [NuGetAuthenticate@1](https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/nuget-authenticate-v1?view=azure-pipelines) in Azure DevOps.
+
+## Usage
+
+Add `NuGetAuthenticate@v1` to the `plugins` list in your `build.yml`:
+
+```yaml
+plugins:
+  - NuGetAuthenticate@v1
+```
+
+With this configuration in place, running `buildcharts generate` automatically injects the necessary secrets and modifications so that `dotnet restore` and NuGet push operations can authenticate against Azure Artifacts feeds.
+
+## What it does
+
+<Steps>
+  <Step title="Discover NuGet sources">
+    Runs `dotnet nuget list source --format short` and keeps sources whose host ends with `pkgs.dev.azure.com` or `pkgs.visualstudio.com`.
+  </Step>
+  <Step title="Resolve credentials">
+    Prefers existing environment credentials when available. Otherwise installs the [Microsoft Artifacts Credential Provider](https://github.com/microsoft/artifacts-credprovider) under `.buildcharts/plugins/NuGetAuthenticate@v1`.
+  </Step>
+  <Step title="Write secrets">
+    Writes secret files under `.buildcharts/secrets`. Writes `ARTIFACTS_CREDENTIALPROVIDER_EXTERNAL_FEED_ENDPOINTS`, a JSON payload describing the endpoint(s) and associated credentials.
+  </Step>
+  <Step title="Patch the Bake plan">
+    Patches the generated `docker-bake.hcl` so these secrets are mounted into the Docker build.
+  </Step>
+</Steps>
+
+## Environment variables
+
+<ParamField query="ARTIFACTS_CREDENTIALPROVIDER_EXTERNAL_FEED_ENDPOINTS" type="string">
+  JSON payload describing Azure Artifacts feed endpoints and credentials.
+</ParamField>
+
+<ParamField query="VSS_NUGET_EXTERNAL_FEED_ENDPOINTS" type="string">
+  Alternative Azure DevOps feed endpoints variable.
+</ParamField>
+
+<ParamField query="ARTIFACTS_CREDENTIALPROVIDER_ACCESSTOKEN" type="string">
+  Access token for the Artifacts Credential Provider.
+</ParamField>
+
+<ParamField query="VSS_NUGET_ACCESSTOKEN" type="string">
+  Access token for VSS NuGet feeds.
+</ParamField>
+
+<ParamField query="SYSTEM_ACCESSTOKEN" type="string">
+  Azure DevOps system access token, typically available in pipeline jobs.
+</ParamField>
+
+<ParamField query="AZURE_ARTIFACTS_ENV_ACCESS_TOKEN" type="string">
+  Access token sourced from the environment for Azure Artifacts.
+</ParamField>
+
+## Notes
+
+<Note>
+  The plugin only acts on Azure DevOps-hosted NuGet feeds. If no matching NuGet sources are found, the plugin exits without patching the generated HCL.
+</Note>

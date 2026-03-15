@@ -1,0 +1,57 @@
+---
+title: "TestcontainersDinD@v1"
+description: "Provide an isolated Docker daemon for Testcontainers-based builds with TestcontainersDinD@v1."
+---
+
+This plugin provisions a dedicated Docker-in-Docker (DinD) daemon and configures Testcontainers to connect to it during build time, providing an isolated Docker engine for container-based tests.
+
+## Usage
+
+Add `TestcontainersDinD@v1` to the `plugins` list in your `build.yml`:
+
+```yaml
+plugins:
+  - TestcontainersDinD@v1
+```
+
+When running `buildcharts generate`, the plugin starts or reuses the DinD container, updates `.buildcharts/docker-bake.hcl`, and leaves the Docker daemon running for reuse.
+
+## What it does
+
+<Steps>
+  <Step title="Start the DinD container">
+    Starts a `buildcharts-dind` container using the `docker:27-dind` image. Reuses the container if it already exists, or removes and recreates it if the image differs.
+  </Step>
+  <Step title="Configure the daemon">
+    Runs the container in privileged mode, binds port `2375`, and disables TLS.
+  </Step>
+  <Step title="Patch the Bake plan">
+    Patches the generated `docker-bake.hcl` for the `test` target with:
+    - `TESTCONTAINERS_HOST_OVERRIDE` — an arg set to the DinD container IP
+    - `host.docker.internal` — an extra host that resolves to the host gateway
+  </Step>
+  <Step title="Write debug info">
+    Writes `.buildcharts/plugins/TestcontainersDinD@v1/container_debuginfo.json` for inspection.
+  </Step>
+</Steps>
+
+## Environment variables
+
+<ParamField query="BUILDCHARTS_DIND_IMAGE" type="string">
+  Override the Docker image tag used for the DinD container. Defaults to `docker:27-dind`.
+</ParamField>
+
+## Notes
+
+<Note>
+  If the generated Bake plan has no `test` target, the patch step is skipped.
+</Note>
+
+<Note>
+  The plugin leaves the `buildcharts-dind` container running for reuse across builds.
+</Note>
+
+## Read more
+
+- [Patterns for running tests inside a Docker container](https://java.testcontainers.org/supported_docker_environment/continuous_integration/dind_patterns/)
+- [GitHub - docker/buildx - Provide option to allow access to /var/run/docker.sock during build #1991](https://github.com/docker/buildx/issues/1991)

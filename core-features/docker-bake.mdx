@@ -1,0 +1,118 @@
+---
+title: "Docker Bake"
+description: "Docker Bake as the execution layer behind generated BuildCharts plans."
+---
+
+BuildCharts generates a `docker-bake.hcl` file because Docker Buildx Bake is the execution layer for the build plan.
+
+## What Bake is
+
+Docker describes Bake as a declarative way to define build configuration, instead of rebuilding complex `docker build` commands from CLI flags on every run.
+
+In BuildCharts, that maps to a clean separation of responsibilities:
+
+- `build.yml` defines build intent
+- `Chart.yaml` maps target types to OCI-hosted implementations
+- `buildcharts generate` renders the final `docker-bake.hcl`
+- `docker buildx bake` executes the generated plan
+
+## Why BuildCharts uses Bake
+
+Bake fits BuildCharts well because it provides:
+
+<Columns cols={2}>
+  <Card title="Declarative configuration" icon="file-code">
+    Build configuration lives in a file instead of long CLI commands that need to be reconstructed on every run.
+  </Card>
+  <Card title="Parallel targets" icon="zap">
+    Bake runs multiple targets in parallel. A single repository can generate separate `build`, `test`, `nuget`, and `docker` targets from one metadata model.
+  </Card>
+  <Card title="Shared configuration" icon="share-2">
+    Groups and targets map cleanly to BuildCharts stage types. Common variables and target-level settings are centralized without duplicating flags per step.
+  </Card>
+  <Card title="Standard Docker interface" icon="box">
+    Works locally and in CI without custom runner logic or wrapper scripts.
+  </Card>
+</Columns>
+
+## Running the generated plan
+
+After generation, the runtime command is predictable:
+
+```bash
+buildcharts generate
+docker buildx bake --file .buildcharts/docker-bake.hcl
+```
+
+You can also target a specific generated stage:
+
+```bash
+docker buildx bake --file .buildcharts/docker-bake.hcl test
+```
+
+You do not need to manually reconstruct build arguments, output settings, or target wiring in scripts.
+
+## Inspecting and debugging
+
+Bake supports commands that make it easier to inspect the generated build plan and troubleshoot failures:
+
+```bash
+# Print the resolved Bake plan without running a build
+docker buildx bake --print
+
+# List available targets
+docker buildx bake --list
+
+# View build history
+docker buildx history ls
+
+# Inspect a specific build
+docker buildx history inspect
+```
+
+## Advanced Bake features
+
+Bake exposes first-class support for features that matter in BuildCharts:
+
+- **Outputs** — control where build artifacts are written
+- **Multi-platform builds** — combine with `types.docker.matrix` in `build.yml`
+- **Cache configuration** — configure cache sources and exports per target
+- **Entitlements** — grant BuildKit network or security permissions via `allow`
+- **Provenance and SBOM attestation** — attach supply-chain metadata to built images
+- **Target overrides** — use `--set` to override specific target settings at runtime
+
+## SBOM and provenance
+
+There are two related but separate concerns:
+
+- **Securing the chart artifact itself** — signing and policy verification are usually the most important controls. See [Charts](/charts).
+- **Securing the images and outputs produced by the build** — use Buildx attestations.
+
+For built images, use Buildx attestations to attach provenance and SBOM metadata. This fits BuildCharts well because the generated `docker-bake.hcl` is executed by Docker Buildx, which already supports provenance and SBOM attestations in the image build flow.
+
+<Tip>
+For produced images and build outputs, provenance and SBOM belong in the Docker Buildx execution layer. Configure them in your Bake targets rather than in chart publishing.
+</Tip>
+
+## Docker documentation
+
+- [Bake overview](https://docs.docker.com/build/bake/)
+- [Introduction to Bake](https://docs.docker.com/build/bake/introduction/)
+- [Bake file reference](https://docs.docker.com/build/bake/reference/)
+- [docker buildx bake CLI reference](https://docs.docker.com/reference/cli/docker/buildx/bake/)
+- [Mastering Docker Buildx Bake](https://docs.docker.com/guides/bake/)
+- [Docker Offload](https://www.docker.com/products/docker-offload/)
+
+## Related pages
+
+<Columns cols={2}>
+  <Card title="Generate" icon="play" href="/core-features/generate">
+    How `buildcharts generate` produces the `docker-bake.hcl` file.
+  </Card>
+  <Card title="Charts" icon="package" href="/charts">
+    OCI-hosted chart artifacts and the trust model for chart supply chains.
+  </Card>
+  <Card title="Summary" icon="file-text" href="/core-features/summary">
+    Export readable build summaries and portable Buildx records.
+  </Card>
+</Columns>
