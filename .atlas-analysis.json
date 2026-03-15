@@ -1,0 +1,94 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "BuildCharts",
+  "projectDescription": "A CLI tool for defining build intent in declarative metadata and generating Docker Buildx Bake plans from OCI-hosted chart templates.",
+  "theme": "maple",
+  "primaryColor": "#54545c",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "index",
+              "install",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "core-features/scaffolding",
+              "core-features/metadata",
+              "core-features/generate",
+              "core-features/docker-bake",
+              "core-features/summary",
+              "core-features/lock-files",
+              "core-features/plugins",
+              "charts"
+            ]
+          },
+          {
+            "group": "How To",
+            "pages": [
+              "how-to/define-build-stages",
+              "how-to/using-outputs",
+              "how-to/handle-dependencies"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/how-it-works",
+              "guides/examples",
+              "guides/github-actions"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/cli",
+              "reference/plugin-nuget-authenticate",
+              "reference/plugin-testcontainers-dind"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "considerations",
+              "troubleshooting/common-issues",
+              "troubleshooting/buildx-history"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Declarative build metadata in build.yml with alias-based stage types",
+    "OCI-hosted versioned chart templates pulled from container registries",
+    "Docker Buildx Bake plan generation from metadata and charts",
+    "Plugin system for pre/post generation hooks (NuGetAuthenticate, TestcontainersDinD)",
+    "Lock file support for pinned chart digests and reproducible builds",
+    "Scaffold command for .NET repositories with GitHub Actions workflow generation",
+    "Build summary export with CI integration (GitHub Actions, Azure DevOps)",
+    "Provider-agnostic: runs the same generated plan locally and in CI"
+  ],
+  "publicApiSurface": [
+    "buildcharts init",
+    "buildcharts update",
+    "buildcharts generate [--use-inline-dockerfiles] [--ignore-lock] [--verbose]",
+    "buildcharts pull <reference> [--untar] [--untardir <DIR>] [--output <OUTPUT>]",
+    "buildcharts summary",
+    "buildcharts version",
+    "NuGetAuthenticate@v1 plugin",
+    "TestcontainersDinD@v1 plugin",
+    "build.yml schema (version, variables, plugins, targets, types)",
+    "charts/buildcharts/Chart.yaml dependency manifest",
+    "charts/buildcharts/Chart.lock pinned digest file"
+  ]
+}
